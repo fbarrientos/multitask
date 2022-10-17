@@ -1,6 +1,6 @@
 # parameters
-nc: 1  # number of classes
-n_segcls: 2 # 多一个分割类别数
+nc: 3  # number of classes
+n_segcls: 5 # 多一个分割类别数
 depth_multiple: 0.33  # model depth multiple
 width_multiple: 0.50  # layer channel multiple
 
