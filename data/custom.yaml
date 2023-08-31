@@ -18,9 +18,9 @@ val: ./data/customdata/detdata/images/val/
 segtrain: ./data/customdata
 segval: ./data/customdata
 # number of detection classes
-nc: 3
+nc: 7
 # class names
-names: ['canoe', 'paddle', 'person']
+names: ['canoe', 'person', 'paddle', 'dog', 'bird', 'rock', 'trunk']
 
 # Cityscapes
 #labels = [

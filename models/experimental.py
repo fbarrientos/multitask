@@ -124,6 +124,8 @@ def attempt_load(weights, map_location=None):
             m.inplace = True  # pytorch 1.7.0 compatibility
         elif type(m) is Conv:
             m._non_persistent_buffers_set = set()  # pytorch 1.6.0 compatibility
+        elif type(m) is nn.Upsample and not hasattr(m, 'recompute_scale_factor'):
+            m.recompute_scale_factor = None
 
     if len(model) == 1:
         return model[-1]  # return model

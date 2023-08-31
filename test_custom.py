@@ -404,4 +404,4 @@ if __name__ == '__main__':
         os.system('zip -r study.zip study_*.txt')
         plot_study_txt(x=x)  # plot
 
-    segtest(root=opt.segdata, weights=opt.weights, batch_size=int(opt.batch_size/8), n_segcls=19, base_size=opt.base_size)  # 19 for cityscapes
+    segtest(root=opt.segdata, weights=opt.weights, batch_size=1, n_segcls=16, base_size=opt.base_size)  # 19 for cityscapes

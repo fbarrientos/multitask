@@ -439,7 +439,7 @@ def train(hyp, opt, device, tb_writer=None):
             ema.update_attr(model, include=['yaml', 'nc', 'hyp', 'gr', 'names', 'stride', 'class_weights'])
             # pixACC, mIoU
             if epoch % 10 == 0 or (epochs - epoch) < 40:
-                mIoU = test.seg_validation(model=ema.ema, valloader=seg_valloader, device=device, n_segcls=19,
+                mIoU = test.seg_validation(model=ema.ema, valloader=seg_valloader, device=device, n_segcls=16,
                                 half_precision=True)
             # mAP
             final_epoch = epoch + 1 == epochs  # 是否是最后一轮
