@@ -1,1 +1,1 @@
-放分割标签文件，仅支持png
+only png supported

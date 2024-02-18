@@ -1,6 +1,6 @@
 # parameters
-nc: 7  # number of classes
-n_segcls: 16 # 多一个分割类别数
+nc: 7  # number of classes for object detection
+n_segcls: 9 # number classes for semantic segmentation
 depth_multiple: 0.33  # model depth multiple
 width_multiple: 0.50  # layer channel multiple
 
