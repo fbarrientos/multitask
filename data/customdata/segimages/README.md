@@ -1,1 +1,0 @@
-Supports jpg and png

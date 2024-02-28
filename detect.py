@@ -16,63 +16,24 @@ from utils.plots import plot_one_box
 from utils.torch_utils import select_device, load_classifier, time_synchronized
 import numpy as np
 
-Cityscapes_COLORMAP = [
-    [128, 64, 128],
-    [244, 35, 232],
-    [70, 70, 70],
-    [102, 102, 156],
-    [190, 153, 153],
-    [153, 153, 153],
-    [250, 170, 30],
-    [220, 220, 0],
-    [107, 142, 35],
-    [152, 251, 152],
-    [0, 130, 180],
-    [220, 20, 60],
-    [255, 0, 0],
-    [0, 0, 142],
-    [0, 0, 70],
-    [0, 60, 100],
-    [0, 80, 100],
-    [0, 0, 230],
-    [119, 11, 32],
+Lenticwater_COLORMAP = [
+    [208, 211, 212], # background
+    [13, 86, 127], # water
+    [152, 251, 152], # blooms
+    [0, 148, 63], # grass
+    [116, 116, 116], # dirt
+    [0, 81, 27], # tree
+    [71, 5, 0], # house
+    [0, 64, 0], # mountain
+    [0, 130, 180], # sky
 ]
 
-Cityscapes_IDMAP = [
-    [7],
-    [8],
-    [11],
-    [12],
-    [13],
-    [17],
-    [19],
-    [20],
-    [21],
-    [22],
-    [23],
-    [24],
-    [25],
-    [26],
-    [27],
-    [28],
-    [31],
-    [32],
-    [33],
-]
-
-Cityscapes_Class = ["road", "sidewalk", "building", "wall", "fence",
-               "pole", "traffic light", "traffic sign", "vegetation",
-               "terrain", "sky", "person", "rider", "car", "truck",
-               "bus", "train", "motorcycle", "bicyle"]
+Lenticwater_Class = ["background", "water", "blooms", "grass", "dirt",
+               "tree", "house", "mountain", "sky"]
 
 
-def label2image(pred, COLORMAP=Cityscapes_COLORMAP):
+def label2image(pred, COLORMAP=Lenticwater_COLORMAP):
     colormap = np.array(COLORMAP, dtype='uint8')
-    X = pred.astype('int32')
-    return colormap[X, :]
-
-def trainid2id(pred, IDMAP=Cityscapes_IDMAP):
-    colormap = np.array(IDMAP, dtype='uint8')
     X = pred.astype('int32')
     return colormap[X, :]
 
@@ -190,21 +151,21 @@ def detect(save_img=False):
             # seg = seg[0]
             seg = F.interpolate(seg, (im0.shape[0], im0.shape[1]), mode='bilinear', align_corners=True)[0]
 
-            mask = label2image(seg.max(axis=0)[1].cpu().numpy(), Cityscapes_COLORMAP)[:, :, ::-1]
+            mask = label2image(seg.max(axis=0)[1].cpu().numpy(), Lenticwater_COLORMAP)[:, :, ::-1]
             dst = cv2.addWeighted(mask, 0.4, im0, 0.6, 0)
 
             # Stream results
-            if view_img:
-                cv2.imshow(str(p), im0)
-                cv2.imshow("segmentation", mask)
-                cv2.imshow("mix", dst)
-                cv2.waitKey(0)  # 1 millisecond
+            #if view_img:
+            #    cv2.imshow(str(p), im0)
+            #    cv2.imshow("segmentation", mask)
+            #    cv2.imshow("mix", dst)
+            #    cv2.waitKey(0)  # 1 millisecond
 
-            if opt.submit:
-                sub_path = sub_dir+str(p.name)
-                sub_path = sub_path[:-4] + "_pred.png"
-                result = trainid2id(seg.max(axis=0)[1].cpu().numpy(), Cityscapes_IDMAP)
-                cv2.imwrite(sub_path, result)
+            #if opt.submit:
+            #    sub_path = sub_dir+str(p.name)
+            #    sub_path = sub_path[:-4] + "_pred.png"
+            #    result = trainid2id(seg.max(axis=0)[1].cpu().numpy(), Cityscapes_IDMAP)
+            #    cv2.imwrite(sub_path, result)
             # Save results (image with detections)
             if save_img:
                 if dataset.mode == 'image':
