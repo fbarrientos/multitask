@@ -94,18 +94,18 @@ class ComputeLoss:
         h = model.hyp  # hyperparameters
 
         # Define criteria
-        BCEcls = nn.BCEWithLogitsLoss(pos_weight=torch.tensor([h['cls_pw']], device=device))  # cls BCE yolov3后传统, BCE而不是CE
+        BCEcls = nn.BCEWithLogitsLoss(pos_weight=torch.tensor([h['cls_pw']], device=device))  # cls BCE 
         BCEobj = nn.BCEWithLogitsLoss(pos_weight=torch.tensor([h['obj_pw']], device=device))  # obj BCE
 
         # Class label smoothing https://arxiv.org/pdf/1902.04103.pdf eqn 3
-        self.cp, self.cn = smooth_BCE(eps=h.get('label_smoothing', 0.0))  # positive, negative BCE targets # 标签label smoothing后正样本和负样本的概率
+        self.cp, self.cn = smooth_BCE(eps=h.get('label_smoothing', 0.0))  # positive, negative BCE targets 
 
-        # Focal loss 是否focal loss以及γ的大小, 看超参数配置文件, 默认不用focal loss
+        # Focal loss 
         g = h['fl_gamma']  # focal loss gamma
         if g > 0:
             BCEcls, BCEobj = FocalLoss(BCEcls, g), FocalLoss(BCEobj, g)
 
-        det = model.module.model[-1] if is_parallel(model) else model.model[-1]  # Detect() module # 若DDP外面又包了一层所有形式不一样
+        det = model.module.model[-1] if is_parallel(model) else model.model[-1]  # Detect() module 
         self.balance = {3: [4.0, 1.0, 0.4]}.get(det.nl, [4.0, 1.0, 0.25, 0.06, .02])  # P3-P7
         self.ssi = list(det.stride).index(16) if autobalance else 0  # stride 16 index
         self.BCEcls, self.BCEobj, self.gr, self.hyp, self.autobalance = BCEcls, BCEobj, model.gr, h, autobalance
@@ -129,7 +129,7 @@ class ComputeLoss:
                 # Regression
                 pxy = ps[:, :2].sigmoid() * 2. - 0.5
                 pwh = (ps[:, 2:4].sigmoid() * 2) ** 2 * anchors[i]
-                pbox = torch.cat((pxy, pwh), 1)  # predicted box 上两行按推理的box放缩偏移
+                pbox = torch.cat((pxy, pwh), 1)  # predicted box 
                 iou = bbox_iou(pbox.T, tbox[i], x1y1x2y2=False, CIoU=True)  # iou(prediction, target) 用CIoU loss
                 lbox += (1.0 - iou).mean()  # iou loss
 
@@ -137,7 +137,7 @@ class ComputeLoss:
                 tobj[b, a, gj, gi] = (1.0 - self.gr) + self.gr * iou.detach().clamp(0).type(tobj.dtype)  # iou ratio
 
                 # Classification
-                if self.nc > 1:  # cls loss (only if multiple classes) 多类别才有cls loss
+                if self.nc > 1:  # cls loss (only if multiple classes)
                     t = torch.full_like(ps[:, 5:], self.cn, device=device)  # targets
                     t[range(n), tcls[i]] = self.cp
                     lcls += self.BCEcls(ps[:, 5:], t)  # BCE
@@ -153,13 +153,13 @@ class ComputeLoss:
 
         if self.autobalance:
             self.balance = [x / self.balance[self.ssi] for x in self.balance]
-        lbox *= self.hyp['box']  # 三部分loss乘以其超参数配置文件中的增益
+        lbox *= self.hyp['box']  
         lobj *= self.hyp['obj']
         lcls *= self.hyp['cls']
         bs = tobj.shape[0]  # batch size
 
         loss = lbox + lobj + lcls
-        return loss * bs, torch.cat((lbox, lobj, lcls, loss)).detach()  # BCE自动平均故乘batchsize, detach()从计算图中除去防止梯度泄露
+        return loss * bs, torch.cat((lbox, lobj, lcls, loss)).detach()  
 
     def build_targets(self, p, targets):
         # Build targets for compute_loss(), input targets(image,class,x,y,w,h)
@@ -217,7 +217,7 @@ class ComputeLoss:
         return tcls, tbox, indices, anch
 
 
-# 语义分割损失函数  带不带aux，带几个aux内外部接口本应该保持一致，但我没时间改了
+
 class SegmentationLosses(nn.CrossEntropyLoss):
     """2D Cross Entropy Loss with Auxilary Loss"""
     def __init__(self, se_loss=False, se_weight=0.2, nclass=-1, aux_num=2,
@@ -232,23 +232,23 @@ class SegmentationLosses(nn.CrossEntropyLoss):
         self.bceloss = nn.BCELoss(weight)
         self.aux_num = aux_num
 
-    def forward(self, *inputs):  # 这里接口写的很丑,没时间重构了,直接点就是无aux不用[],有aux几个结果输出用[]包装
-        if not self.se_loss and not self.aux:  # 无aux, Base,PSP和Lab用这个
+    def forward(self, *inputs):  
+        if not self.se_loss and not self.aux:  # Base,PSP, Lab
             return super(SegmentationLosses, self).forward(*inputs)
         elif not self.se_loss:      
-            if self.aux_num == 2:  # 两个aux，BiSe用这个
+            if self.aux_num == 2:  # BiSe
                 pred1, pred2, pred3, target = tuple(inputs)
                 loss1 = super(SegmentationLosses, self).forward(pred1, target)
                 loss2 = super(SegmentationLosses, self).forward(pred2, target)
                 loss3 = super(SegmentationLosses, self).forward(pred3, target)
                 return loss1 + self.aux_weight*1.5 * loss2 + self.aux_weight/2.0 * loss3
-            else:  # 一个aux, 目前没有用这个
+            else:  
                 assert self.aux_num == 1
                 pred1, pred2, target = tuple(inputs)
                 loss1 = super(SegmentationLosses, self).forward(pred1, target)
                 loss2 = super(SegmentationLosses, self).forward(pred2, target)
                 return loss1 + self.aux_weight * loss2
-        elif not self.aux:   # 目前仅支持以上三种配置(无aux，一个，两个)，以下两种情况目前未使用，所以bug未修改
+        elif not self.aux:   
             pred, se_pred, target = tuple(inputs)
             se_target = self._get_batch_label_vector(target, nclass=self.nclass).type_as(pred)
             loss1 = super(SegmentationLosses, self).forward(pred, target)
@@ -297,11 +297,9 @@ class SegFocalLoss(nn.CrossEntropyLoss):
         else: return loss
 
 
-# 以下有两种OHEM实现略有不同，分别是根据两个bisenet实现修改的，aux使用接口一致, 第一种实现更快(batchsize＝12时候一轮比第二种快22s)
-# bisenet的aux和main loss是同权重的[1.0, 1.0]但我的实验同权重非常不好，我认为辅助权重应该低于主权重，很多其他网络实现也是辅助权重低的
-# 第一种
-class OhemCELoss(nn.Module):  # 带ohem和aux的CE，0.7是根据bisenet原作者和复现者参数确定的
-    def __init__(self, thresh=0.5, ignore_index=-1, aux=False, aux_weight=[0.15, 0.05]):  # 辅助损失可以设小，但bisenet里辅助损失系数为1(同权)，pytorch encoding项目默认0.2
+
+class OhemCELoss(nn.Module):  
+    def __init__(self, thresh=0.5, ignore_index=-1, aux=False, aux_weight=[0.15, 0.05]):  
         super(OhemCELoss, self).__init__()
         self.thresh = -torch.log(torch.tensor(thresh, requires_grad=False, dtype=torch.float)).cuda()
         self.ignore_index = ignore_index
@@ -310,16 +308,16 @@ class OhemCELoss(nn.Module):  # 带ohem和aux的CE，0.7是根据bisenet原作�
         self.aux_weight = aux_weight
 
     def forward(self, preds, labels):
-        if not self.aux:  # 此时preds应该为单个输出
+        if not self.aux:  
             return self.forward_once(preds, labels)
-        else:  # 此时preds应该为三个输出并用[]包裹起来，preds[0]永远是主输出
-            mainloss = self.forward_once(preds[0], labels)  # 若采用resize标签到来节约显存参考下两行注释替换labels，并且去除yolo.py分割head的aux部分的上采样(不推荐resize标签)
+        else:  
+            mainloss = self.forward_once(preds[0], labels)  
             auxloss1 = self.forward_once(preds[1], labels)  #  (preds[1].shape[2], preds[1].shape[3]), mode='nearest')[0].long())
             auxloss2 = self.forward_once(preds[2], labels)  #  (preds[2].shape[2], preds[2].shape[3]), mode='nearest')[0].long())
             return mainloss + self.aux_weight[0] * auxloss1 + self.aux_weight[1] * auxloss2
 
     def forward_once(self, preds, labels):
-        n_min = int(labels[labels != self.ignore_index].numel() // 16)  # 1/16=(1/4)^2即不计ignore的1/4张图  #(16*8**2)  # 最少样本公式是按bisenet原作者表达式写的(这个实现少除以8**2) 原式int(config.batch_size // len(engine.devices) * config.image_height * config.image_width //(16 * config.gt_down_sampling ** 2))
+        n_min = int(labels[labels != self.ignore_index].numel() // 16)  
         # print(n_min)
         loss = self.criteria(preds, labels).view(-1)
         loss_hard = loss[loss > self.thresh]
@@ -328,7 +326,7 @@ class OhemCELoss(nn.Module):  # 带ohem和aux的CE，0.7是根据bisenet原作�
         return torch.mean(loss_hard)
 
 
-# 第二种
+
 class ProbOhemCrossEntropy2d(nn.Module):
     def __init__(self, ignore_index, reduction='mean', thresh=0.5, min_kept=256, aux=False, aux_weight=[0.4, 0.4], use_weight=False):
         super(ProbOhemCrossEntropy2d, self).__init__()
@@ -350,10 +348,10 @@ class ProbOhemCrossEntropy2d(nn.Module):
         self.aux_weight = aux_weight
 
     def forward(self, preds, target):
-        if not self.aux:  # 此时preds应该为单个输出
+        if not self.aux:  
             return forward_once(preds, target)
-        else:  # 此时preds应该为三个输出并用[]包裹起来，preds[0]永远是主输出
-            mainloss = self.forward_once(preds[0], target)  # 若采用resize标签到来节约显存参考下两行注释替换labels，并且去除yolo.py分割head的aux部分的上采样
+        else:  
+            mainloss = self.forward_once(preds[0], target)  
             auxloss1 = self.forward_once(preds[1], target)  # F.interpolate(target.float().unsqueeze(0), (preds[1].shape[2], preds[1].shape[3]), mode='nearest')[0].long())
             auxloss2 = self.forward_once(preds[2], target)  # F.interpolate(target.float().unsqueeze(0), (preds[2].shape[2], preds[2].shape[3]), mode='nearest')[0].long())
             return mainloss + self.aux_weight[0] * auxloss1 + self.aux_weight[1] * auxloss2            
@@ -385,7 +383,7 @@ class ProbOhemCrossEntropy2d(nn.Module):
                 valid_mask = valid_mask * kept_mask
                 # logger.info('Valid Mask: {}'.format(valid_mask.sum()))
 
-        target = target.masked_fill_(~valid_mask, self.ignore_index)  # 注：pytorch1.2后bool tensor不支持１ - , use the `~` or `logical_not()` operator instead
+        target = target.masked_fill_(~valid_mask, self.ignore_index)  
         target = target.view(b, h, w)
 
         return self.criterion(pred, target)

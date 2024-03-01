@@ -53,14 +53,14 @@ def train(hyp, opt, device, tb_writer=None):
     best = wdir / 'best.pt'
     results_file = save_dir / 'results.txt'
 
-    # Save run settings # 存超参数和优化器参数, 优化器参数,可用于resume
+    # Save run settings
     with open(save_dir / 'hyp.yaml', 'w') as f:
         yaml.dump(hyp, f, sort_keys=False)
     with open(save_dir / 'opt.yaml', 'w') as f:
         yaml.dump(vars(opt), f, sort_keys=False)
 
     # Configure
-    plots = not opt.evolve  # create plots  不进化就画图
+    plots = not opt.evolve  # create plots
     cuda = device.type != 'cpu'
     init_seeds(2 + rank)
     with open(opt.data) as f:
@@ -69,7 +69,7 @@ def train(hyp, opt, device, tb_writer=None):
 
     # Logging- Doing this before checking the dataset. Might update data_dict
     loggers = {'wandb': None}  # loggers dict
-    if rank in [-1, 0]:  # -1不开DDP, 0是DDP主进程
+    if rank in [-1, 0]:  
         opt.hyp = hyp  # add hyperparameters
         run_id = torch.load(weights).get('wandb_id') if weights.endswith('.pt') and os.path.isfile(weights) else None
         wandb_logger = WandbLogger(opt, Path(opt.save_dir).stem, run_id, data_dict)
@@ -83,18 +83,18 @@ def train(hyp, opt, device, tb_writer=None):
     assert len(names) == nc, '%g names found for nc=%g dataset in %s' % (len(names), nc, opt.data)  # check
 
     # Model
-    pretrained = weights.endswith('.pt')  # 有weights输入就用其初始化
-    if pretrained:  # 有预训练参数
+    pretrained = weights.endswith('.pt')  
+    if pretrained:  
         with torch_distributed_zero_first(rank):
             attempt_download(weights)  # download if not found locally
         ckpt = torch.load(weights, map_location=device)  # load checkpoint
         model = Model(opt.cfg or ckpt['model'].yaml, ch=3, nc=nc, anchors=hyp.get('anchors')).to(device)  # create
-        exclude = ['anchor'] if (opt.cfg or hyp.get('anchors')) and not opt.resume else []  # exclude keys 初始化时候不使用的参数(非resume且有配置时按cfg和model初始化来指定anchor, 否则延用pretrained weights的anchor)
-        state_dict = ckpt['model'].float().state_dict()  # to FP32 ckpt里model键对应的值才是模型,训练结束后保存的是float16(中间保存的float32),模型的state_dict是参数,包括可训练参数和register_buffer保存的buffer parameter(Detect的anchor和gird等)
-        state_dict = intersect_dicts(state_dict, model.state_dict(), exclude=exclude)  # intersect 赋值参数,预训练的参数赋值到新建的模型,exclude除外(即anchor使用cfg的而不是预训练)
-        model.load_state_dict(state_dict, strict=False)  # load 调整好的预训练参数加载到模型
+        exclude = ['anchor'] if (opt.cfg or hyp.get('anchors')) and not opt.resume else []  # exclude keys
+        state_dict = ckpt['model'].float().state_dict()  # to FP32 ckpt
+        state_dict = intersect_dicts(state_dict, model.state_dict(), exclude=exclude)  # intersect
+        model.load_state_dict(state_dict, strict=False)  # load
         logger.info('Transferred %g/%g items from %s' % (len(state_dict), len(model.state_dict()), weights))  # report
-    else:  # 无预训练参数,只建模型
+    else:  
         model = Model(opt.cfg, ch=3, nc=nc, anchors=hyp.get('anchors')).to(device)  # create
     with torch_distributed_zero_first(rank):
         check_dataset(data_dict)  # check
@@ -103,21 +103,21 @@ def train(hyp, opt, device, tb_writer=None):
     segtrain_path = data_dict['segtrain']
     segval_path = data_dict['segval']
 
-    # Freeze 要冻结的参数 似乎只能在此代码处手动设置列表
+    # Freeze
     freeze = []  # parameter names to freeze (full or partial)
     for k, v in model.named_parameters():
-        v.requires_grad = True  # train all layers 全部参数可导
-        if any(x in k for x in freeze):  # 碰见freeze列表的层使其参数不可导
+        v.requires_grad = True  # train all layers
+        if any(x in k for x in freeze):  
             print('freezing %s' % k)
             v.requires_grad = False
 
     # Optimizer
     nbs = 64  # nominal batch size
     accumulate = max(round(nbs / total_batch_size), 1)  # accumulate loss before optimizing
-    hyp['weight_decay'] *= total_batch_size * accumulate / nbs  # scale weight_decay 权重衰减系数
+    hyp['weight_decay'] *= total_batch_size * accumulate / nbs  # scale weight_decay
     logger.info(f"Scaled weight_decay = {hyp['weight_decay']}")
 
-    # 参数分组,pg0是BN,pg1是权重,pg2是偏置
+    
     pg0, pg1, pg2 = [], [], []  # optimizer parameter groups
     for k, v in model.named_modules():
         if hasattr(v, 'bias') and isinstance(v.bias, nn.Parameter):
@@ -126,14 +126,14 @@ def train(hyp, opt, device, tb_writer=None):
             pg0.append(v.weight)  # no decay
         elif hasattr(v, 'weight') and isinstance(v.weight, nn.Parameter):
             pg1.append(v.weight)  # apply decay
-    # 优化器初始化, BN层参数不带权重衰减
+    
     if opt.adam:
         optimizer = optim.Adam(pg0, lr=hyp['lr0'], betas=(hyp['momentum'], 0.999))  # adjust beta1 to momentum
     else:
         optimizer = optim.SGD(pg0, lr=hyp['lr0'], momentum=hyp['momentum'], nesterov=True)
-    # 权重参数, 带权重衰减
+    
     optimizer.add_param_group({'params': pg1, 'weight_decay': hyp['weight_decay']})  # add pg1 with weight_decay
-    # 偏置参数, 同样不带衰减
+    
     optimizer.add_param_group({'params': pg2})  # add pg2 (biases)
     logger.info('Optimizer groups: %g .bias, %g conv.weight, %g other' % (len(pg2), len(pg1), len(pg0)))
     del pg0, pg1, pg2
@@ -144,10 +144,10 @@ def train(hyp, opt, device, tb_writer=None):
         lf = lambda x: (1 - x / (epochs - 1)) * (1.0 - hyp['lrf']) + hyp['lrf']  # linear
     else:
         lf = one_cycle(1, hyp['lrf'], epochs)  # cosine 1->hyp['lrf']
-    scheduler = lr_scheduler.LambdaLR(optimizer, lr_lambda=lf)  # 自定义lambda函数学习率衰减策略
+    scheduler = lr_scheduler.LambdaLR(optimizer, lr_lambda=lf)  
     # plot_lr_scheduler(optimizer, scheduler, epochs)
 
-    # EMA 指数滑动平均
+    # EMA
     ema = ModelEMA(model) if rank in [-1, 0] else None
 
     # Resume
@@ -168,10 +168,10 @@ def train(hyp, opt, device, tb_writer=None):
             results_file.write_text(ckpt['training_results'])  # write results.txt
 
         # Epochs
-        start_epoch = ckpt['epoch'] + 1  # 预训练模型的epoch是-1
-        if opt.resume:  # resume参数epoch应该大于0
+        start_epoch = ckpt['epoch'] + 1  
+        if opt.resume:  
             assert start_epoch > 0, '%s training to %g epochs is finished, nothing to resume.' % (weights, epochs)
-        if epochs < start_epoch:  # 总轮数比开始轮还小, 总轮数加上已训练轮(即再训练总轮数次而不是通常的 总轮数-开始轮 次)
+        if epochs < start_epoch:  
             logger.info('%s has been trained for %g epochs. Fine-tuning for %g additional epochs.' %
                         (weights, ckpt['epoch'], epochs))
             epochs += ckpt['epoch']  # finetune additional epochs
@@ -179,84 +179,83 @@ def train(hyp, opt, device, tb_writer=None):
         del ckpt, state_dict
 
     # Image sizes
-    gs = max(int(model.stride.max()), 32)  # grid size (max stride)  至少32
-    nl = model.model[-1].nl  # number of detection layers (used for scaling hyp['obj']) model最后一层是Detect, nl是其输出层数量
-    imgsz, imgsz_test = [check_img_size(x, gs) for x in opt.img_size]  # verify imgsz are gs-multiples 检查图片尺寸是否合法,不合法就自动替换
+    gs = max(int(model.stride.max()), 32)  # grid size (max stride)
+    nl = model.model[-1].nl  # number of detection layers (used for scaling hyp['obj'])
+    imgsz, imgsz_test = [check_img_size(x, gs) for x in opt.img_size]  # verify imgsz are gs-multiples
 
-    # DP mode DP多线程数据并行模式, 不使用, 并行推荐DDP多进程
+    # DP mode
     if cuda and rank == -1 and torch.cuda.device_count() > 1:
         model = torch.nn.DataParallel(model)
 
-    # SyncBatchNorm 跨卡BN, 仅支持DDP
+    # SyncBatchNorm
     if opt.sync_bn and cuda and rank != -1:
         model = torch.nn.SyncBatchNorm.convert_sync_batchnorm(model).to(device)
         logger.info('Using SyncBatchNorm()')
 
-    # 检测 Trainloader
+    # Trainloader
     dataloader, dataset = create_dataloader(train_path, imgsz, batch_size, gs, opt,
                                             hyp=hyp, augment=True, cache=opt.cache_images, rect=opt.rect, rank=rank,
                                             world_size=opt.world_size, workers=opt.workers,
                                             image_weights=opt.image_weights, quad=opt.quad, prefix=colorstr('train: '))
-    mlc = np.concatenate(dataset.labels, 0)[:, 0].max()  # max label class 纵向连接了标签后找第一列最大值, mlc的值就是类别数-1
+    mlc = np.concatenate(dataset.labels, 0)[:, 0].max()  # max label class
     nb = len(dataloader)  # number of batches
-    # mlc=实际标签类别数-1 应该小于 nc模型结构支持的前景类别数 (不用等式关系, 因为结构类别多的模型可以支持训练标签类别少的数据, 反之不成立)
+    
     assert mlc < nc, 'Label class %g exceeds nc=%g in %s. Possible class labels are 0-%g' % (mlc, nc, opt.data, nc - 1)
 
-    # Process 0  非DDP或DDP中的主进程
+    # Process 0
     if rank in [-1, 0]:
-        testloader = create_dataloader(test_path, imgsz_test, batch_size * 2, gs, opt,  # testloader batch_size翻倍
+        testloader = create_dataloader(test_path, imgsz_test, batch_size * 2, gs, opt,  # testloader
                                        hyp=hyp, cache=opt.cache_images and not opt.notest, rect=True, rank=-1,
                                        world_size=opt.world_size, workers=opt.workers,
-                                       pad=0.5, prefix=colorstr('val: '))[0]  # [0]只要了loader没要dataset, 和train处理不一样
+                                       pad=0.5, prefix=colorstr('val: '))[0]
 
-        if not opt.resume:  # 常规, 非resume
+        if not opt.resume:
             labels = np.concatenate(dataset.labels, 0)
-            c = torch.tensor(labels[:, 0])  # classes 所有对象类别(包括所有目标,不是图像)
+            c = torch.tensor(labels[:, 0])  # classes
             # cf = torch.bincount(c.long(), minlength=nc) + 1.  # frequency
             # model._initialize_biases(cf.to(device))
             if plots:
                 plot_labels(labels, names, save_dir, loggers)
                 if tb_writer:
-                    tb_writer.add_histogram('classes', c, 0)  #
+                    tb_writer.add_histogram('classes', c, 0)  
 
             # Anchors
-            if not opt.noautoanchor:  # 用train dataset自动聚类选取最好anchor
-                check_anchors(dataset, model=model, thr=hyp['anchor_t'], imgsz=imgsz)  # anchor_t是最大放大倍数,yolov5公式不同于v3v4, 见核心Model推理时anchor偏移放缩公式和issue
-            model.half().float()  # pre-reduce anchor precision 先转float16再转回32,虽然type是32,但此时参数的数值范围限到16了
+            if not opt.noautoanchor:  
+                check_anchors(dataset, model=model, thr=hyp['anchor_t'], imgsz=imgsz)  
+            model.half().float()  # pre-reduce anchor precision
 
-    # 图尺寸相同时候用这个准确测指标（batch_size设为1可以支持图尺寸不同, 或者用下面的val mode）
-        seg_valloader = SegmentationDataset.get_custom_loader(root=segval_path, batch_size=1,
-                                                         split="val", mode="testval",  # 旧版为val新版训练中验证也用testval模式
-                                                         base_size=imgsz,   # 原图按照长边resize到imgz输入后双线性插值到原图尺寸计算精度
-                                                         # crop_size=640,  # testval 时候cropsize不起作用
-                                                         workers=2, pin=True)  # 验证batch_size和workers得配合, 都太大会导致子进程死亡, 单进程龟速加载数据
-                                                                     # 我电脑上(4,4)是最快的, 更大子进程会挂(现在图大了,怎么设都会挂, BUG)
-
-    # # 图尺寸不同时候改用val模式,一般会比标准目标输入低一点
-    #     seg_valloader = SegmentationDataset.get_citysbdd_loader(root=segval_path, batch_size=4,
-    #                                                      split="val", mode="val",  # 和train.py不同，使用val模式
-    #                                                      base_size=1024,   # val模式base_size无效
-    #                                                      # crop_size手动取，建议目标输入的短边尺寸，如cityscapes取512
-    #                                                      crop_size=512,  # 图尺寸不同，用val，按短边resize到cropsize再crop（cropsize，cropsize）
-    #                                                      workers=4, pin=True)  # 验证batch_size和workers得配合, 都太大会导致子进程死亡, 单进程龟速加载数据
-    #                                                                  # 我电脑上(4,4)是最快的, 更大子进程会挂(现在图大了,怎么设都会挂, BUG)
     
-    # 分割 loader custom的base_size和crop_size的长边就是imgsz
+        seg_valloader = SegmentationDataset.get_custom_loader(root=segval_path, batch_size=1,
+                                                         split="val", mode="testval",  
+                                                         base_size=imgsz,   
+                                                         # crop_size=640,  # testval
+                                                         workers=2, pin=True) 
+
+    
+    #     seg_valloader = SegmentationDataset.get_citysbdd_loader(root=segval_path, batch_size=4,
+    #                                                      split="val", mode="val",  
+    #                                                      base_size=1024,   
+    #                                                      
+    #                                                      crop_size=512,  
+    #                                                      workers=4, pin=True)  
+    #                                                                  
+    
+    
     seg_trainloader = SegmentationDataset.get_custom_loader(root=segtrain_path,
                                                            split="train", mode="train",
                                                            base_size=imgsz,
-                                                           # custom的crop_size就是(imgsz, imgsz)
+                                                           
                                                            batch_size=batch_size,
                                                            workers=opt.workers, pin=True)
 
     segnb = len(seg_trainloader)
     # DDP mode
-    if cuda and rank != -1:  # 没禁用(-1)就开DDP模型
+    if cuda and rank != -1:  
         model = DDP(model, device_ids=[opt.local_rank], output_device=opt.local_rank,
                     # nn.MultiheadAttention incompatibility with DDP https://github.com/pytorch/pytorch/issues/26698
                     find_unused_parameters=any(isinstance(layer, nn.MultiheadAttention) for layer in model.modules()))
 
-    # Model parameters 根据输出层数,类别数等调整损失增益,模型超参数
+    # Model parameters
     hyp['box'] *= 3. / nl  # scale to layers
     hyp['cls'] *= nc / 80. * 3. / nl  # scale to classes and layers
     hyp['obj'] *= (imgsz / 640) ** 2 * 3. / nl  # scale to image size and layers
@@ -269,32 +268,29 @@ def train(hyp, opt, device, tb_writer=None):
 
     # Start training
     t0 = time.time()
-    nw = max(round(hyp['warmup_epochs'] * nb), 500)  # number of warmup iterations, max(3 epochs, 1k iterations) 最少warmup三轮或500batch(原版1000,800就够了)
+    nw = max(round(hyp['warmup_epochs'] * nb), 500)  # number of warmup iterations, max(3 epochs, 1k iterations)
     # nw = min(nw, (epochs - start_epoch) / 2 * nb)  # limit warmup to < 1/2 of training
     maps = np.zeros(nc)  # mAP per class
     results = (0, 0, 0, 0, 0, 0, 0)  # P, R, mAP@.5, mAP@.5-.95, val_loss(box, obj, cls)
-    scheduler.last_epoch = start_epoch - 1  # do not move 配置lr_scheduler起始位置
-    scaler = amp.GradScaler(enabled=cuda)  # 说明不是float16训练,而是16和32混合精度训练. 训练前初始化loss scaler 用于float16放大梯度后backward, optimizer.step之前自动转float32再缩回来
-    compute_loss = ComputeLoss(model)  # init loss class 初始化检测criteria
+    scheduler.last_epoch = start_epoch - 1  # do not move
+    scaler = amp.GradScaler(enabled=cuda)  
+    compute_loss = ComputeLoss(model)  # init loss class
   
 # -----------------------------------------------------------------------------------------------------------
-    # 无aux模型输出不用[],有aux几个结果输出用[]包装
-    # Base，PSP和Lab用这个，无aux
+    # Base，PSP, Lab
     compute_seg_loss = SegmentationLosses(aux=False, ignore_index=-1, weight=None).cuda()
     # compute_seg_loss = SegFocalLoss(ignore_index=-1, gamma=2, reduction="mean").cuda()
-    # BiSe用这个　两个aux
+    # BiSe
     # compute_seg_loss = SegmentationLosses(nclass=19, aux=True, aux_num=2, aux_weight=0.1, ignore_index=-1, weight=None).cuda()
-    # 一个aux，没有用这个
+    
     # compute_seg_loss = SegmentationLosses(nclass=19, aux=True, aux_num=1, aux_weight=0.1, ignore_index=-1, weight=None).cuda()
 # -----------------------------------------------------------------------------------------------------------
 
-    # focalloss别用，cityscapes效果不行
-    # OHEM能用，理论上应该超过CE，但是目前实验效果不如CE(设成默认0.7收敛蛮快的但最终值不够好)，认为与计算像素个数和学习率有关，用的话循环损失计算的语句得改一下，接口和CE还没来得及保持一致
+    # focalloss
     # compute_seg_loss = OhemCELoss(thresh=0.7, ignore_index=-1, aux=False)
     # compute_seg_loss = OhemCELoss(thresh=0.7, ignore_index=-1, aux=True, aux_weight=[0.15, 0.1])
 
-    detgain, seggain = 0.6, 0.35  # 检测, 分割比例  
-    # CE、1/8单输入、batchsize13用0.65,0.35左右,注意64向下取整的梯度积累，比13*4=52大(12*5=64)通常应该降低分割损失比例或调小学习率
+    detgain, seggain = 0.6, 0.35 
 
 
 
@@ -303,11 +299,11 @@ def train(hyp, opt, device, tb_writer=None):
                 f'Logging results to {save_dir}\n'
                 f'Starting training for {epochs} epochs...')
     for epoch in range(start_epoch, epochs):  # epoch ------------------------------------------------------------------
-        mIoU = 0  # 每轮开始mIoU设置成０，因为选模型按ｍIoU选，为了加速训练可能ｎ轮才测一次mIoU，对没测mIoU的模型不会存为best.pt
-        print(f'accumulate: {accumulate}')  # 显示epoch开始时梯度积累次数(第一个值忽略, 注意warmup期间按batch变化, 此处只是辅助观察防梯度爆炸)
-        model.train()  # epoch开始, 确保train模式 注意validation时候可能会把模型.eval()因此开始的train()很有必要
+        mIoU = 0  
+        print(f'accumulate: {accumulate}')  
+        model.train()  
 
-        # Update image weights (optional) 更新image_weights权重, 默认不开image_weights忽略此块代码
+        # Update image weights (optional)
         if opt.image_weights:
             # Generate indices
             if rank in [-1, 0]:
@@ -325,38 +321,38 @@ def train(hyp, opt, device, tb_writer=None):
         # b = int(random.uniform(0.25 * imgsz, 0.75 * imgsz + gs) // gs * gs)
         # dataset.mosaic_border = [b - imgsz, -b]  # height, width borders
 
-        mloss = torch.zeros(4, device=device)  # 检测 mean losses
-        msegloss = torch.zeros(1, device=device)  # 混合的 mean losses, 两者计算也可知分割loss
+        mloss = torch.zeros(4, device=device)  # mean losses
+        msegloss = torch.zeros(1, device=device)  # mean losses
         if rank != -1:
-            dataloader.sampler.set_epoch(epoch)  # shuffle时, 保证每个epoch顺序不同
+            dataloader.sampler.set_epoch(epoch)  
         pbar = enumerate(dataloader)
         segpbar = enumerate(seg_trainloader)
         logger.info(('\n' + '%10s' * 9) % ('Epoch', 'gpu_mem', 'box', 'obj', 'cls', 'total', 'seg', 'labels', 'img_size'))
         if rank in [-1, 0]:
-            pbar = tqdm(pbar, total=min(nb, segnb))  # progress bar # tqdm进度条迭代
+            pbar = tqdm(pbar, total=min(nb, segnb))  # progress bar 
             segpbar = tqdm(segpbar, total=min(nb, segnb))
-        optimizer.zero_grad()  # 每轮前清空梯度
+        optimizer.zero_grad()  
 
-        # 暂时用zip, 每轮batch数以数量少的为准
+        
         for det_batch, seg_batch in zip(pbar, segpbar):  # batch -------------------------------------------------------------
-            i, (imgs, targets, paths, _) = det_batch  # 检测
-            _, (segimgs, segtargets) = seg_batch   # 分割
-            if len(imgs)==1 or len(segimgs)==1:  # 手动droplast,SE或者gloablpool后的bn不支持单个样本，检测loader调用地方太多不好droplast，这里手动
+            i, (imgs, targets, paths, _) = det_batch  
+            _, (segimgs, segtargets) = seg_batch   
+            if len(imgs)==1 or len(segimgs)==1:  
                 continue
-            # warmup等参数变化以检测为准
-            ni = i + nb * epoch  # number integrated batches (since train start) 记录总iterations, 可以用于停止warmup
+            
+            ni = i + nb * epoch  # number integrated batches (since train start)
             imgs = imgs.to(device, non_blocking=True).float() / 255.0  # uint8 to float32, 0-255 to 0.0-1.0
             # Warmup
             if ni <= nw:
                 xi = [0, nw]  # x interp
-                # model.gr = np.interp(ni, xi, [0.0, 1.0])  # iou loss ratio (obj_loss = 1.0 or iou)  # 修改了accumulate上限,使其不超过nbs(防止Nan)
-                accumulate = max(1, np.interp(ni, xi, [1, math.floor(nbs / total_batch_size)]).round())  # 梯度积累 线性插值xi=[0, 1000], yi=[1, 64/batchsize], 插入点x=ni, 之后取整, 最小限1. warmup时accumulate会逐渐从1按整数增大到目标, warmup结束后稳定在目标值 round(nbs/accumulate), 例如batchsize32实际上两batch才更新一次,等效于64
-                for j, x in enumerate(optimizer.param_groups):  # warmup过程中逐渐把三组参数的lr调到lr0
+                # model.gr = np.interp(ni, xi, [0.0, 1.0])  # iou loss ratio (obj_loss = 1.0 or iou)  
+                accumulate = max(1, np.interp(ni, xi, [1, math.floor(nbs / total_batch_size)]).round())  
+                for j, x in enumerate(optimizer.param_groups):  
                     # bias lr falls from 0.1 to lr0, all other lrs rise from 0.0 to lr0
                     x['lr'] = np.interp(ni, xi, [hyp['warmup_bias_lr'] if j == 2 else 0.0, x['initial_lr'] * lf(epoch)])
                     if 'momentum' in x:
                         x['momentum'] = np.interp(ni, xi, [hyp['warmup_momentum'], hyp['momentum']])
-            # Multi-scale 默认关multi scale
+            # Multi-scale
             if opt.multi_scale:
                 sz = random.randrange(imgsz * 0.5, imgsz * 1.5 + gs) // gs * gs  # size
                 sf = sz / max(imgs.shape[2:])  # scale factor
@@ -364,34 +360,33 @@ def train(hyp, opt, device, tb_writer=None):
                     ns = [math.ceil(x * sf / gs) * gs for x in imgs.shape[2:]]  # new shape (stretched to gs-multiple)
                     imgs = F.interpolate(imgs, size=ns, mode='bilinear', align_corners=False)
 
-            # Forward and Backward 对比原版yolov5此处修改, 否则batchsize只能取单检测时候的一半, 这种写法可以更大一点
+            # Forward and Backward
 
-            with amp.autocast(enabled=cuda):  # 混合精度训练中用来代替autograd
+            with amp.autocast(enabled=cuda):  
                 pred = model(imgs)  # forward
                 loss, loss_items = compute_loss(pred[0], targets.to(device))  # loss scaled by batch_size
-                if rank != -1:  # DDP中loss * GPU数
+                if rank != -1:  
                     loss *= opt.world_size  # gradient averaged between devices in DDP mode
                 if opt.quad:
                     loss *= 4.
-                loss *= detgain  # 检测loss比例
+                loss *= detgain  
             scaler.scale(loss).backward()
             imgshape = imgs.shape[-1]
             if plots and ni >= 3:
-                del imgs  # 前三个batch画图不能del
+                del imgs  
             else:
-                imgs = imgs.to(torch.device('cpu'), non_blocking=True)  # 释放 segimgs输入后就没被调用会被pytorch自动回收不用手动释放(img后续有被调用要手动释放)
+                imgs = imgs.to(torch.device('cpu'), non_blocking=True)  
             
-            segimgs = segimgs.to(device, non_blocking=True)  # 分割已经做过totensor了, 不用/255
+            segimgs = segimgs.to(device, non_blocking=True)  
 
-            with amp.autocast(enabled=cuda):  # 混合精度训练中用来代替autograd
+            with amp.autocast(enabled=cuda):  
                 pred = model(segimgs)
 # -----------------------------------------------------------------------------------------------------------
-                # 无aux模型输出不用[],有aux模型几个结果输出用[]包装
-                # Base,PSP和Lab用这个,无aux
-                segloss = compute_seg_loss(pred[1], segtargets.to(device)) * batch_size # 分割loss CE是平均loss, 配合检测做梯度积累, 因此乘以batchsize(注意有梯度积累其真实batchsize约是nbs=64)  
-                # Bise用这个,两个aux   
+                # Base,PSP, Lab
+                segloss = compute_seg_loss(pred[1], segtargets.to(device)) * batch_size   
+                # Bise   
                 # segloss = compute_seg_loss(pred[1][0], pred[1][1], pred[1][2], segtargets.to(device)) * batch_size    
-                # 一个aux，没有用这个
+                
                 # segloss = compute_seg_loss(pred[1][0], pred[1][1], segtargets.to(device)) * batch_size   
 # -----------------------------------------------------------------------------------------------------------
                 segloss *= seggain
@@ -399,11 +394,11 @@ def train(hyp, opt, device, tb_writer=None):
             del segimgs
 
             # Optimize
-            if ni % accumulate == 0:  # 梯度积累accumulate次后才优化,
-                scaler.step(optimizer)  # optimizer.step  # 混合精度训练优化时用scaler
+            if ni % accumulate == 0:  
+                scaler.step(optimizer)  # optimizer.step
                 scaler.update()
-                optimizer.zero_grad()  # 每次更新完参数才清空梯度, 不更新时累计
-                if ema:  # 不开DDP和DDP主进程中ema开启, 每次更新ema
+                optimizer.zero_grad()  
+                if ema:  
                     ema.update(model)
 
             # Print
@@ -431,7 +426,7 @@ def train(hyp, opt, device, tb_writer=None):
 
         # Scheduler
         lr = [x['lr'] for x in optimizer.param_groups]  # for tensorboard
-        scheduler.step()  # 更新Scheduler
+        scheduler.step()  
 
 
         # DDP process 0 or single-GPU
@@ -442,7 +437,7 @@ def train(hyp, opt, device, tb_writer=None):
                 mIoU = test.seg_validation(model=ema.ema, valloader=seg_valloader, device=device, n_segcls=16,
                                 half_precision=True)
             # mAP
-            final_epoch = epoch + 1 == epochs  # 是否是最后一轮
+            final_epoch = epoch + 1 == epochs  
             if not opt.notest or final_epoch:  # Calculate mAP
                 wandb_logger.current_epoch = epoch + 1
                 results, maps, times = test.test(data_dict,
@@ -469,15 +464,15 @@ def train(hyp, opt, device, tb_writer=None):
                     'metrics/precision', 'metrics/recall', 'metrics/mAP_0.5', 'metrics/mAP_0.5:0.95',
                     'val/box_loss', 'val/obj_loss', 'val/cls_loss',  # val loss
                     'x/lr0', 'x/lr1', 'x/lr2']  # params
-            for x, tag in zip(list(mloss[:-1]) + list(results) + lr, tags):  # 写tensorboard
+            for x, tag in zip(list(mloss[:-1]) + list(results) + lr, tags):  
                 if tb_writer:
                     tb_writer.add_scalar(tag, x, epoch)  # tensorboard
                 if wandb_logger.wandb:
                     wandb_logger.log({tag: x})  # W&B
 
             # Update best mIoU  #mAP
-            # fi = fitness(np.array(results).reshape(1, -1))  # weighted combination of [P, R, mAP@.5, mAP@.5-.95] 按0.1*AP.5+0.9*AP.5:.95指标衡量模型
-            fi = fitness2(np.array(results).reshape(1, -1), mIoU)  # weighted combination of [P, R, mAP@.5, mAP@.5-.95] 按0.1*AP.5+0.9*AP.5:.95指标衡量模型
+            # fi = fitness(np.array(results).reshape(1, -1))  # weighted combination of [P, R, mAP@.5, mAP@.5-.95] 
+            fi = fitness2(np.array(results).reshape(1, -1), mIoU)  # weighted combination of [P, R, mAP@.5, mAP@.5-.95]
 
             if fi > best_fitness:
                 best_fitness = fi
@@ -508,7 +503,7 @@ def train(hyp, opt, device, tb_writer=None):
     # end training
     if rank in [-1, 0]:
         # Plots
-        if plots:  # 不进化就画图
+        if plots:  
             plot_results(save_dir=save_dir)  # save as results.png
             if wandb_logger.wandb:
                 files = ['results.png', 'confusion_matrix.png', *[f'{x}_curve.png' for x in ('F1', 'PR', 'P', 'R')]]
@@ -588,51 +583,51 @@ if __name__ == '__main__':
 
     opt = parser.parse_args()
 
-    # Set DDP variables  DDP常规初始化
-    opt.world_size = int(os.environ['WORLD_SIZE']) if 'WORLD_SIZE' in os.environ else 1  # 获取总进程数world_size
-    opt.global_rank = int(os.environ['RANK']) if 'RANK' in os.environ else -1  # global_rank是所有进程可用的GPU号, local_rank是当前进程对应GPU号
+    # Set DDP variables  
+    opt.world_size = int(os.environ['WORLD_SIZE']) if 'WORLD_SIZE' in os.environ else 1  
+    opt.global_rank = int(os.environ['RANK']) if 'RANK' in os.environ else -1  
     set_logging(opt.global_rank)
     if opt.global_rank in [-1, 0]:
-        # check_git_status()  # 检测git版本,网络不好会卡住,手动关闭
+        # check_git_status()  
         check_requirements()
 
     # Resume
-    wandb_run = check_wandb_resume(opt)  # wandb有bug,没装
-    # 断点重续且没有wandb库
+    wandb_run = check_wandb_resume(opt)  
+    
     if opt.resume and not wandb_run:  # resume an interrupted run
-        ckpt = opt.resume if isinstance(opt.resume, str) else get_latest_run()  # specified or most recent path 找要续的模型pt
+        ckpt = opt.resume if isinstance(opt.resume, str) else get_latest_run()  # specified or most recent path
         assert os.path.isfile(ckpt), 'ERROR: --resume checkpoint does not exist'
         apriori = opt.global_rank, opt.local_rank
-        with open(Path(ckpt).parent.parent / 'opt.yaml') as f:  # 找 优化器 配置文件
+        with open(Path(ckpt).parent.parent / 'opt.yaml') as f:  
             opt = argparse.Namespace(**yaml.load(f, Loader=yaml.SafeLoader))  # replace
         opt.cfg, opt.weights, opt.resume, opt.batch_size, opt.global_rank, opt.local_rank = '', ckpt, True, opt.total_batch_size, *apriori  # reinstate
         logger.info('Resuming training from %s' % ckpt)
     else:
         # opt.hyp = opt.hyp or ('hyp.finetune.yaml' if opt.weights else 'hyp.scratch.yaml')
         opt.data, opt.cfg, opt.hyp = check_file(opt.data), check_file(opt.cfg), check_file(opt.hyp)  # check files
-        assert len(opt.cfg) or len(opt.weights), 'either --cfg or --weights must be specified'  # cfg和weights至少有一个
+        assert len(opt.cfg) or len(opt.weights), 'either --cfg or --weights must be specified'  
         opt.img_size.extend([opt.img_size[-1]] * (2 - len(opt.img_size)))  # extend to 2 sizes (train, test)
-        opt.name = 'evolve' if opt.evolve else opt.name  # project名字,用于保存文件夹
+        opt.name = 'evolve' if opt.evolve else opt.name  
         opt.save_dir = increment_path(Path(opt.project) / opt.name, exist_ok=opt.exist_ok | opt.evolve)  # increment run
 
-    # DDP mode 数据多进程并行
-    opt.total_batch_size = opt.batch_size  # 总batchsize
-    device = select_device(opt.device, batch_size=opt.batch_size)  # 设备数
-    if opt.local_rank != -1:  # 默认是-1不开启DDP
+    # DDP mode
+    opt.total_batch_size = opt.batch_size  
+    device = select_device(opt.device, batch_size=opt.batch_size)  
+    if opt.local_rank != -1:  
         assert torch.cuda.device_count() > opt.local_rank
         torch.cuda.set_device(opt.local_rank)
         device = torch.device('cuda', opt.local_rank)
-        dist.init_process_group(backend='nccl', init_method='env://')  # distributed backend DDP初始化进程组
-        assert opt.batch_size % opt.world_size == 0, '--batch-size must be multiple of CUDA device count'  # 一般一卡开一进程, batchsize可被进程数整除
-        opt.batch_size = opt.total_batch_size // opt.world_size  # 每个进程batchsize
+        dist.init_process_group(backend='nccl', init_method='env://')  # distributed backend 
+        assert opt.batch_size % opt.world_size == 0, '--batch-size must be multiple of CUDA device count'  
+        opt.batch_size = opt.total_batch_size // opt.world_size  
 
-    # Hyperparameters 配置超参数
+    # Hyperparameters
     with open(opt.hyp) as f:
         hyp = yaml.load(f, Loader=yaml.SafeLoader)  # load hyps
 
     # Train
     logger.info(opt)
-    if not opt.evolve:  # 没有用进化算法(默认)
+    if not opt.evolve:  
         tb_writer = None  # init loggers
         if opt.global_rank in [-1, 0]:
             prefix = colorstr('tensorboard: ')

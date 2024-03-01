@@ -54,8 +54,8 @@ def detect(save_img=False):
     # Initialize
     set_logging()
     device = select_device(opt.device)
-    half = device.type != 'cpu'  # half precision only supported on CUDA 原始代码,cpu用float32,gpu用float16
-    # half = False  # 强制禁用float16推理, 20和30系列显卡有tensor cores float16, 10系列卡不开cudnn.benchmark速度反而降
+    half = device.type != 'cpu'  # half precision only supported on CUDA
+    # half = False  
     # Load model
     model = attempt_load(weights, map_location=device)  # load FP32 model
     stride = int(model.stride.max())  # model stride
@@ -74,14 +74,14 @@ def detect(save_img=False):
     if webcam:
         view_img = check_imshow()
         cudnn.benchmark = True  # set True to speed up constant image size inference
-                                # 开启后第一次推理会把各种后端算法测试一遍,后续推理都用最快的算法,会有较明显加速
-                                # 算法速度不仅与复杂度有关,也与输入规模相关,因此要求后续输入同尺寸,原版仅在视频测试时开启,想测真实速度应该开启
+                                
+                                
         dataset = LoadStreams(source, img_size=imgsz, stride=stride)
     else:
         cudnn.benchmark = False
-        dataset = LoadImages(source, img_size=imgsz, stride=stride)  # 跑的是这个
+        dataset = LoadImages(source, img_size=imgsz, stride=stride)  
 
-    if opt.submit or opt.save_as_video:  # 提交和做视频必定是同尺寸
+    if opt.submit or opt.save_as_video:  
         cudnn.benchmark = True
         
     # Get names and colors

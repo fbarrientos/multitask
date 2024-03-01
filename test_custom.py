@@ -20,21 +20,13 @@ import torch.nn.functional as F
 
 import SegmentationDataset
 
-"""
-test_custom.py与test.py的区别仅在加载器上从Cityscapes改成了Custom
-新版训练测试(loader的mode为"testval")可以把验证集长边resize到base-size输入到网络, 但mask仍然是原图尺寸, 以下代码自动把网络输出双线性插值到原图算指标
-调用示例:
-python test.py --data cityscapes_det.yaml --segdata ./data/citys --weights ./best.pt --img-size 640 --base-size 640
-即相比原版yolov5多 --segdata 和 --base-size两个参数
-"""
-
 
 def seg_validation(model, n_segcls, valloader, device, half_precision=True):
     # Fast test during the training
     def eval_batch(model, image, target, half):
         outputs = model(image)
         # outputs = gather(outputs, 0, dim=0)
-        pred = outputs[1]  # 1是分割
+        pred = outputs[1]  
         target = target.to(device, non_blocking=True)
         pred = F.interpolate(pred, (target.shape[1], target.shape[2]), mode='bilinear', align_corners=True)
         correct, labeled = batch_pix_accuracy(pred.data, target)
@@ -66,7 +58,7 @@ def seg_validation(model, n_segcls, valloader, device, half_precision=True):
     return mIoU
 
 
-def segtest(weights, root="data/citys", batch_size=16, half_precision=True, n_segcls=19, base_size=2048):  # 会使用原始尺寸测, 未考虑尺寸对不齐, 图片尺寸应为32倍数
+def segtest(weights, root="data/citys", batch_size=16, half_precision=True, n_segcls=19, base_size=2048):  
     device = select_device(opt.device, batch_size=batch_size)
     model = attempt_load(weights, map_location=device)  # load FP32 model
     testvalloader = SegmentationDataset.get_custom_loader(root, batch_size=batch_size, split="val", mode="testval", workers=4, base_size=base_size)
@@ -165,7 +157,7 @@ def test(data,
         with torch.no_grad():
             # Run model
             t = time_synchronized()
-            out, train_out = model(img, augment=augment)[0]  # inference and training outputs 修改[0]新模型输出[0]是检测
+            out, train_out = model(img, augment=augment)[0]  # inference and training outputs 
             t0 += time_synchronized() - t
 
             # Compute loss
@@ -404,4 +396,4 @@ if __name__ == '__main__':
         os.system('zip -r study.zip study_*.txt')
         plot_study_txt(x=x)  # plot
 
-    segtest(root=opt.segdata, weights=opt.weights, batch_size=1, n_segcls=16, base_size=opt.base_size)  # 19 for cityscapes
+    segtest(root=opt.segdata, weights=opt.weights, batch_size=1, n_segcls=9, base_size=opt.base_size)  # 19 for lentic water

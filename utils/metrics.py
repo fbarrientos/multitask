@@ -18,7 +18,7 @@ def fitness2(x, mIoU):
     # Model fitness as a weighted combination of metrics
     w = [0.0, 0.0, 0.1, 0.2, 0.7]  # weights for [P, R, mAP@0.5, mAP@0.5:0.95, mIoU]
     # print(x)
-    x_m = np.expand_dims(np.append(x[:, :4], mIoU), 0)  # ｘ　在train.py有reshape，确定只有１行
+    x_m = np.expand_dims(np.append(x[:, :4], mIoU), 0)  
     return (x_m * w).sum(1)
 
 def ap_per_class(tp, conf, pred_cls, target_cls, plot=False, save_dir='.', names=()):
