@@ -116,7 +116,7 @@ class SegMaskLab(nn.Module):
 
 
 class SegMaskBase(nn.Module):
-    def __init__(self, n_segcls=19, n=1, c_hid=256, shortcut=False, ch=()):  
+    def __init__(self, n_segcls=9, n=1, c_hid=256, shortcut=False, ch=()):  
         super(SegMaskBase, self).__init__()
         self.c_in = ch[0]  
         self.c_out = n_segcls
@@ -136,7 +136,7 @@ class SegMaskBase(nn.Module):
 
 
 class SegMaskPSP(nn.Module):  
-    def __init__(self, n_segcls=19, n=1, c_hid=256, shortcut=False, ch=()):  
+    def __init__(self, n_segcls=9, n=1, c_hid=256, shortcut=False, ch=()):  
         super(SegMaskPSP, self).__init__()
         self.c_in8 = ch[0]  # 16  
         self.c_in16 = ch[1]  # 19
