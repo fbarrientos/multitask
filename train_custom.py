@@ -281,9 +281,9 @@ def train(hyp, opt, device, tb_writer=None):
     compute_seg_loss = SegmentationLosses(aux=False, ignore_index=-1, weight=None).cuda()
     # compute_seg_loss = SegFocalLoss(ignore_index=-1, gamma=2, reduction="mean").cuda()
     # BiSe
-    # compute_seg_loss = SegmentationLosses(nclass=19, aux=True, aux_num=2, aux_weight=0.1, ignore_index=-1, weight=None).cuda()
+    # compute_seg_loss = SegmentationLosses(nclass=9, aux=True, aux_num=2, aux_weight=0.1, ignore_index=-1, weight=None).cuda()
     
-    # compute_seg_loss = SegmentationLosses(nclass=19, aux=True, aux_num=1, aux_weight=0.1, ignore_index=-1, weight=None).cuda()
+    # compute_seg_loss = SegmentationLosses(nclass=9, aux=True, aux_num=1, aux_weight=0.1, ignore_index=-1, weight=None).cuda()
 # -----------------------------------------------------------------------------------------------------------
 
     # focalloss
@@ -336,7 +336,13 @@ def train(hyp, opt, device, tb_writer=None):
         
         for det_batch, seg_batch in zip(pbar, segpbar):  # batch -------------------------------------------------------------
             i, (imgs, targets, paths, _) = det_batch  
-            _, (segimgs, segtargets) = seg_batch   
+            _, (segimgs, segtargets) = seg_batch  
+
+            ignore_classes = [0]
+            ignore_tensor = torch.tensor(ignore_classes)
+            mask2 = torch.isin(segtargets, ignore_tensor)
+            segtargets[mask2] = -1
+
             if len(imgs)==1 or len(segimgs)==1:  
                 continue
             
