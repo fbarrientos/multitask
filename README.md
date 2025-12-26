@@ -2,6 +2,8 @@
 ## Overview
 Model based on CNNs that integrates object detection and semantic segmentation in lentic water scenes to simultaneously identify and localize navigational obstacles and amorphous semantic structures such as cyanobacterial blooms, water bodies, among others.
 
+The methodology and results are described in the following peer-reviewed publication: https://doi.org/10.1016/j.asoc.2024.111849
+
 <img src="data/githubimage/000001.jpg">
 
 ## Setup
